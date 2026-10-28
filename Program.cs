@@ -14,7 +14,7 @@ namespace MouseBatteryTray
         private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
         [STAThread]
-        private static void Main()
+        private static void Main(string[] args)
         {
             bool createdNew;
             using (var mutex = new Mutex(true, MutexName, out createdNew))
@@ -28,7 +28,19 @@ namespace MouseBatteryTray
 
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
-                Application.Run(new TrayContext());
+                var context = new TrayContext();
+                if (args != null && Array.Exists(args, delegate (string a) { return a == "--settings"; }))
+                    context.OpenSettingsPublic();
+                Application.Run(context);
+            }
+        }
+
+        internal static string AppVersion
+        {
+            get
+            {
+                Version v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+                return string.Format("{0}.{1}.{2}", v.Major, v.Minor, v.Build);
             }
         }
 
@@ -100,6 +112,11 @@ namespace MouseBatteryTray
             _icon.MouseClick += OnIconClick;
 
             var menu = new ContextMenuStrip();
+            menu.Renderer = new DarkMenuRenderer();
+            menu.Font = Theme.BodyFont;
+            menu.ShowImageMargin = false;
+            menu.Padding = new Padding(2, 6, 2, 6);
+            menu.RenderMode = ToolStripRenderMode.Professional;
             _infoItem = new ToolStripMenuItem("正在读取…") { Enabled = false };
             menu.Items.Add(_infoItem);
             menu.Items.Add(new ToolStripSeparator());
@@ -148,9 +165,13 @@ namespace MouseBatteryTray
             _chart.Show();
         }
 
-        private void OpenSettings()
+        internal void OpenSettingsPublic()
         {
-            using (var form = new SettingsForm(_settings, Program.IsAutoStartEnabled()))
+            OpenSettings();
+        }
+
+        private void OpenSettings()
+        {            using (var form = new SettingsForm(_settings, Program.IsAutoStartEnabled()))
             {
                 if (form.ShowDialog() != DialogResult.OK) return;
 
