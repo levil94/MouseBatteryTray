@@ -28,21 +28,42 @@ jobs:
         shell: pwsh
         run: ./build.ps1
 
-      - name: 打包
+      - name: 打包便携版
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item MouseBatteryTray.exe dist/
           Copy-Item hidapi.dll dist/
+          Copy-Item MouseBatteryTray.vbs dist/
+          Copy-Item Start-MouseBatteryTray.ps1 dist/
           Copy-Item README.md dist/
           Compress-Archive -Path dist/* -DestinationPath MouseBatteryTray-win-x64.zip -Force
           "zip size: {0:N0} bytes" -f (Get-Item MouseBatteryTray-win-x64.zip).Length
+
+      - name: 安装 Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: 构建安装包
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}"
+          if ($ver -like 'v*') { $ver = $ver.Substring(1) } else { $ver = "0.0.0" }
+          "Building installer for version $ver"
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found" }
+          & $iscc "/DAppVersion=$ver" "installer.iss"
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
+          Get-ChildItem dist\*.exe | Format-Table Name, Length
+          "installer size: {0:N0} bytes" -f (Get-Item "dist\MouseBatteryTray-$ver-setup.exe").Length
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: MouseBatteryTray-win-x64
-          path: MouseBatteryTray-win-x64.zip
+          path: |
+            MouseBatteryTray-win-x64.zip
+            dist/MouseBatteryTray-*-setup.exe
           if-no-files-found: error
 
   release:
@@ -57,10 +78,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: MouseBatteryTray-win-x64
+          path: artifacts
 
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
-          files: MouseBatteryTray-win-x64.zip
+          files: |
+            artifacts/MouseBatteryTray-win-x64.zip
+            artifacts/dist/MouseBatteryTray-*-setup.exe
           generate_release_notes: true
           fail_on_unmatched_files: true

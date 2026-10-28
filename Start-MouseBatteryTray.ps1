@@ -15,10 +15,14 @@ function Write-LauncherLog([string]$text) {
     } catch { }
 }
 
-$sources = Get-ChildItem -Path $root -Filter *.cs -File |
-    Where-Object { $_.Name -notmatch '^(AssemblyInfo|obj)' } |
-    Sort-Object Name |
-    ForEach-Object { $_.FullName }
+$srcDirs = @($root, (Join-Path $root "src")) | Where-Object { Test-Path $_ }
+$sources = @()
+foreach ($d in $srcDirs) {
+    $sources += Get-ChildItem -Path $d -Filter *.cs -File |
+        Where-Object { $_.Name -notmatch '^(AssemblyInfo)' } |
+        Sort-Object Name |
+        ForEach-Object { $_.FullName }
+}
 
 if ($sources.Count -eq 0) {
     Write-LauncherLog "no .cs sources found in $root"
