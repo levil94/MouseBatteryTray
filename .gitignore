@@ -1,0 +1,13 @@
+# 构建产物
+*.exe
+*.dll
+
+# 第三方二进制（由 build.ps1 自动下载）
+hidapi.dll
+
+# 本地杂项
+*.log
+*.user
+.vs/
+bin/
+obj/
