@@ -20,9 +20,10 @@ if (-not (Test-Path $dll)) {
 }
 
 $out = Join-Path $dir "MouseBatteryTray.exe"
+$sources = Get-ChildItem $dir -Filter *.cs | ForEach-Object { $_.FullName }
 & $csc /nologo /target:winexe /optimize+ /out:$out `
     /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll `
-    (Join-Path $dir "Hidpp.cs") (Join-Path $dir "Program.cs")
+    $sources
 
 if (Test-Path $out) {
     "编译成功: $out  ({0:N0} 字节)" -f (Get-Item $out).Length

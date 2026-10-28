@@ -1,9 +1,6 @@
 using System;
 using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Text;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -15,8 +12,6 @@ namespace MouseBatteryTray
         private const string AppName = "MouseBatteryTray";
         private const string MutexName = "Global\\MouseBatteryTray_SingleInstance";
         private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        private const int PollSeconds = 60;
-        private const int LowBatteryThreshold = 20;
 
         [STAThread]
         private static void Main()
@@ -37,16 +32,18 @@ namespace MouseBatteryTray
             }
         }
 
-        internal static string LogPath
+        internal static string DataDir
         {
             get
             {
                 string dir = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName);
                 Directory.CreateDirectory(dir);
-                return Path.Combine(dir, "log.txt");
+                return dir;
             }
         }
+
+        internal static string LogPath { get { return Path.Combine(DataDir, "log.txt"); } }
 
         internal static void Log(string message)
         {
@@ -81,45 +78,38 @@ namespace MouseBatteryTray
                 else key.DeleteValue(AppName, false);
             }
         }
-
-        internal static int LowThreshold { get { return LowBatteryThreshold; } }
-        internal static int PollIntervalSeconds { get { return PollSeconds; } }
     }
 
     internal sealed class TrayContext : ApplicationContext
     {
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern bool DestroyIcon(IntPtr handle);
-
         private readonly NotifyIcon _icon;
         private readonly System.Windows.Forms.Timer _timer;
-        private readonly ToolStripMenuItem _autoStartItem;
+        private readonly ToolStripMenuItem _infoItem;
+        private AppSettings _settings;
         private LogitechBattery.Reading _last;
         private DateTime _lastUpdated = DateTime.MinValue;
         private bool _warned;
 
         public TrayContext()
         {
-            _icon = new NotifyIcon();
-            _icon.Visible = true;
-            _icon.Text = "鼠标电量：正在读取…";
-            _icon.Icon = RenderIcon(null);
+            _settings = AppSettings.Load();
+
+            _icon = new NotifyIcon { Visible = true, Text = "鼠标电量：正在读取…" };
+            _icon.Icon = IconRenderer.Render(_settings, null);
             _icon.MouseClick += OnIconClick;
 
             var menu = new ContextMenuStrip();
+            _infoItem = new ToolStripMenuItem("正在读取…") { Enabled = false };
+            menu.Items.Add(_infoItem);
+            menu.Items.Add(new ToolStripSeparator());
+
             var refreshItem = new ToolStripMenuItem("立即刷新");
             refreshItem.Click += delegate { Refresh(true); };
             menu.Items.Add(refreshItem);
 
-            _autoStartItem = new ToolStripMenuItem("开机自动启动");
-            _autoStartItem.CheckOnClick = true;
-            _autoStartItem.Checked = Program.IsAutoStartEnabled();
-            _autoStartItem.Click += delegate
-            {
-                try { Program.SetAutoStart(_autoStartItem.Checked); }
-                catch (Exception ex) { Program.Log("设置自启失败: " + ex.Message); }
-            };
-            menu.Items.Add(_autoStartItem);
+            var settingsItem = new ToolStripMenuItem("设置…");
+            settingsItem.Click += delegate { OpenSettings(); };
+            menu.Items.Add(settingsItem);
 
             menu.Items.Add(new ToolStripSeparator());
             var exitItem = new ToolStripMenuItem("退出");
@@ -129,7 +119,7 @@ namespace MouseBatteryTray
             _icon.ContextMenuStrip = menu;
 
             _timer = new System.Windows.Forms.Timer();
-            _timer.Interval = Program.PollIntervalSeconds * 1000;
+            _timer.Interval = _settings.IntervalSeconds * 1000;
             _timer.Tick += delegate { Refresh(false); };
             _timer.Start();
 
@@ -139,6 +129,32 @@ namespace MouseBatteryTray
         private void OnIconClick(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left) Refresh(true);
+        }
+
+        private void OpenSettings()
+        {
+            using (var form = new SettingsForm(_settings, Program.IsAutoStartEnabled()))
+            {
+                if (form.ShowDialog() != DialogResult.OK) return;
+
+                AppSettings updated = form.Result;
+                bool autoStartChanged = form.AutoStartChecked != Program.IsAutoStartEnabled();
+                _settings = updated;
+                _settings.Save();
+
+                if (autoStartChanged)
+                {
+                    try { Program.SetAutoStart(form.AutoStartChecked); }
+                    catch (Exception ex) { Program.Log("设置自启失败: " + ex.Message); }
+                }
+
+                _timer.Interval = _settings.IntervalSeconds * 1000;
+                Program.Log(string.Format("设置已更新：间隔={0}s 阈值={1}% 图标={2}",
+                    _settings.IntervalSeconds, _settings.LowThreshold, _settings.IconMode));
+
+                _warned = false;
+                Refresh(true);
+            }
         }
 
         private void Refresh(bool verbose)
@@ -153,27 +169,32 @@ namespace MouseBatteryTray
                     Program.Log(string.Format("OK {0} idx=0x{1:X2} {2}mV -> {3}%",
                         reading.DeviceName, reading.DeviceIndex, reading.Millivolts, reading.Percent));
 
-                    UpdateIcon(reading.Percent, string.Format("{0} {1}% · {2:0.00}V · {3:HH:mm}",
+                    SetIcon(reading.Percent, string.Format("{0} {1}% · {2:0.00}V · {3:HH:mm}",
                         ShortName(reading.DeviceName), reading.Percent, reading.Millivolts / 1000.0, _lastUpdated));
+                    _infoItem.Text = string.Format("{0}：{1}%（{2:0.00}V）",
+                        ShortName(reading.DeviceName), reading.Percent, reading.Millivolts / 1000.0);
 
-                    if (reading.Percent <= Program.LowThreshold && !_warned)
+                    if (reading.Percent <= _settings.LowThreshold && !_warned)
                     {
                         _warned = true;
                         _icon.ShowBalloonTip(5000, "鼠标电量偏低",
-                            string.Format("剩余 {0}%，请及时充电。", reading.Percent), ToolTipIcon.Warning);
+                            string.Format("剩余 {0}%，已低于设定的 {1}%。", reading.Percent, _settings.LowThreshold),
+                            ToolTipIcon.Warning);
                     }
-                    if (reading.Percent > Program.LowThreshold + 5) _warned = false;
+                    if (reading.Percent > _settings.LowThreshold + 5) _warned = false;
                 }
                 else
                 {
                     Program.Log("读取失败：" + (reading != null ? reading.Message : "null"));
                     if (_last != null)
                     {
-                        UpdateIcon(null, string.Format("未连接 · 上次 {0}% ({1:HH:mm})", _last.Percent, _lastUpdated));
+                        SetIcon(null, string.Format("未连接 · 上次 {0}% ({1:HH:mm})", _last.Percent, _lastUpdated));
+                        _infoItem.Text = string.Format("未连接 · 上次 {0}%（{1:HH:mm}）", _last.Percent, _lastUpdated);
                     }
                     else
                     {
-                        UpdateIcon(null, "未检测到罗技鼠标");
+                        SetIcon(null, "未检测到罗技鼠标");
+                        _infoItem.Text = "未检测到罗技鼠标";
                     }
                 }
             }
@@ -190,77 +211,12 @@ namespace MouseBatteryTray
             return n.Length > 0 ? n : "鼠标";
         }
 
-        private void UpdateIcon(int? percent, string tooltip)
+        private void SetIcon(int? percent, string tooltip)
         {
             Icon old = _icon.Icon;
-            _icon.Icon = RenderIcon(percent);
+            _icon.Icon = IconRenderer.Render(_settings, percent);
             _icon.Text = tooltip.Length > 63 ? tooltip.Substring(0, 63) : tooltip;
             if (old != null) old.Dispose();
-        }
-
-        /// <summary>把百分比画成图标：整块底色 + 大号数字，16px 下也能辨认。</summary>
-        private static Icon RenderIcon(int? percent)
-        {
-            int size = Math.Max(16, SystemInformation.SmallIconSize.Width);
-            var bmp = new Bitmap(size, size);
-            using (Graphics g = Graphics.FromImage(bmp))
-            {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
-                g.Clear(Color.Transparent);
-
-                Color fill;
-                string text;
-                if (!percent.HasValue)
-                {
-                    fill = Color.FromArgb(120, 120, 120);
-                    text = "--";
-                }
-                else
-                {
-                    int p = percent.Value;
-                    text = p.ToString();
-                    if (p <= 10) fill = Color.FromArgb(214, 48, 49);
-                    else if (p <= 25) fill = Color.FromArgb(230, 126, 34);
-                    else if (p <= 50) fill = Color.FromArgb(241, 196, 15);
-                    else fill = Color.FromArgb(46, 204, 113);
-                }
-
-                using (var brush = new SolidBrush(fill))
-                using (var path = RoundedRect(new Rectangle(0, 0, size, size), Math.Max(2, size / 5)))
-                {
-                    g.FillPath(brush, path);
-                }
-
-                using (var font = new Font("Segoe UI", size * 0.52f, FontStyle.Bold, GraphicsUnit.Pixel))
-                using (var fmt = new StringFormat())
-                {
-                    fmt.Alignment = StringAlignment.Center;
-                    fmt.LineAlignment = StringAlignment.Center;
-                    using (var textBrush = new SolidBrush(Color.White))
-                    {
-                        g.DrawString(text, font, textBrush, new RectangleF(0, 0, size, size + 1), fmt);
-                    }
-                }
-            }
-
-            IntPtr hIcon = bmp.GetHicon();
-            Icon icon = (Icon)Icon.FromHandle(hIcon).Clone();
-            DestroyIcon(hIcon);
-            bmp.Dispose();
-            return icon;
-        }
-
-        private static GraphicsPath RoundedRect(Rectangle rect, int radius)
-        {
-            var path = new GraphicsPath();
-            int d = radius * 2;
-            path.AddArc(rect.X, rect.Y, d, d, 180, 90);
-            path.AddArc(rect.Right - d, rect.Y, d, d, 270, 90);
-            path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90);
-            path.AddArc(rect.X, rect.Bottom - d, d, d, 90, 90);
-            path.CloseFigure();
-            return path;
         }
 
         private void ExitApp()
