@@ -7,14 +7,14 @@ using Microsoft.Win32;
 
 namespace MouseBatteryTray
 {
-    internal static class Program
+    public static class Program
     {
         private const string AppName = "MouseBatteryTray";
         private const string MutexName = "Global\\MouseBatteryTray_SingleInstance";
         private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
         [STAThread]
-        private static void Main(string[] args)
+        public static void Main(string[] args)
         {
             bool createdNew;
             using (var mutex = new Mutex(true, MutexName, out createdNew))
@@ -49,6 +49,11 @@ namespace MouseBatteryTray
         {
             get
             {
+                // 宿主模式（PowerShell 加载临时程序集）时，由启动脚本显式指定数据目录
+                string overrideDir = Environment.GetEnvironmentVariable("MOUSEBATTERYTRAY_DATA");
+                if (!string.IsNullOrEmpty(overrideDir) && Directory.Exists(overrideDir))
+                    return overrideDir;
+
                 string dir = Path.GetDirectoryName(ExecutablePath);
                 if (string.IsNullOrEmpty(dir)) dir = Directory.GetCurrentDirectory();
 

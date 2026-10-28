@@ -66,6 +66,26 @@ README.md               说明文档
 
 详见 [从源码构建](#从源码构建)。
 
+### 方式三：在 Smart App Control 拦截环境下运行
+
+部分 Windows 11 机器开启了 **Smart App Control 强制模式**，会阻止任何未签名的可执行文件，表现为双击 exe 无反应，事件日志提示：
+
+```
+Code Integrity determined that a process attempted to load MouseBatteryTray.exe
+that did not meet the Enterprise signing level requirements
+```
+
+这种情况不需要关闭安全策略，也不需要购买签名证书。压缩包内提供了宿主启动器：
+
+| 文件 | 用途 |
+|---|---|
+| `MouseBatteryTray.vbs` | **双击这个**，静默启动（无控制台窗口） |
+| `Start-MouseBatteryTray.ps1` | 实际启动脚本，可传入 `-Settings` 直接打开设置 |
+
+原理：程序源码在**已签名的 PowerShell 宿主进程**内即时编译并运行，不生成会被拦截的未签名 PE 文件。首次启动会有 1–2 秒编译开销。
+
+> 局限：任务栏图标的进程归属为 `powershell.exe`，与直接运行 exe 的区别仅此而已。
+
 ## 使用
 
 程序启动后常驻托盘，无主窗口。所有交互通过托盘图标完成。

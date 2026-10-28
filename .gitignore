@@ -17,3 +17,4 @@ settings.ini
 history.csv
 log.txt
 .write_probe
+launcher.log
