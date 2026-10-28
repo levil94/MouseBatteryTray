@@ -50,45 +50,47 @@ MouseBatteryTray 通过 Logitech HID++ 2.0 协议直接读取无线鼠标电池�
 
 ### 方式一：下载发行版
 
-从 [Releases](https://github.com/levil94/MouseBatteryTray/releases) 下载 `MouseBatteryTray-win-x64.zip`，解压后运行 `MouseBatteryTray.exe`。
+从 [Releases](https://github.com/levil94/MouseBatteryTray/releases) 下载 `MouseBatteryTray-win-x64.zip`，解压后**双击 `MouseBatteryTray.vbs`** 启动。
 
 压缩包内包含：
 
 ```
-MouseBatteryTray.exe    主程序
-hidapi.dll              HID 访问库
-README.md               说明文档
+MouseBatteryTray.vbs             启动入口（推荐）
+Start-MouseBatteryTray.ps1      宿主启动脚本
+MouseBatteryTray.exe            可执行版，仅适用于允许运行未签名程序的机器
+hidapi.dll                      HID 访问库
+README.md                       说明文档
 ```
 
-两个文件必须位于同一目录。
+所有文件需位于同一目录。两种启动方式功能完全一致，区别只在是否依赖已签名的 PowerShell 宿主：
+
+| 启动方式 | 适用场景 |
+|---|---|
+| **`MouseBatteryTray.vbs`** | 通用，包括开启 Smart App Control 的机器 |
+| `MouseBatteryTray.exe` | 系统允许运行未签名程序时使用，启动略快 |
 
 ### 方式二：从源码构建
 
 详见 [从源码构建](#从源码构建)。
 
-### 方式三：在 Smart App Control 拦截环境下运行
+### 双击 exe 没有反应怎么办
 
-部分 Windows 11 机器开启了 **Smart App Control 强制模式**，会阻止任何未签名的可执行文件，表现为双击 exe 无反应，事件日志提示：
+部分 Windows 11 机器开启了 **Smart App Control 强制模式**，会阻止未签名的可执行文件，事件日志提示：
 
 ```
 Code Integrity determined that a process attempted to load MouseBatteryTray.exe
 that did not meet the Enterprise signing level requirements
 ```
 
-这种情况不需要关闭安全策略，也不需要购买签名证书。压缩包内提供了宿主启动器：
+这种情况**不需要关闭安全策略，也不需要购买签名证书**。改用 `MouseBatteryTray.vbs` 启动即可。
 
-| 文件 | 用途 |
-|---|---|
-| `MouseBatteryTray.vbs` | **双击这个**，静默启动（无控制台窗口） |
-| `Start-MouseBatteryTray.ps1` | 实际启动脚本，可传入 `-Settings` 直接打开设置 |
+原理：程序源码在**已签名的 PowerShell 宿主进程**内即时编译并运行，不生成会被拦截的未签名 PE 文件。首次启动有 1–2 秒编译开销。
 
-原理：程序源码在**已签名的 PowerShell 宿主进程**内即时编译并运行，不生成会被拦截的未签名 PE 文件。首次启动会有 1–2 秒编译开销。
-
-> 局限：任务栏图标的进程归属为 `powershell.exe`，与直接运行 exe 的区别仅此而已。
+> 局限：任务栏图标的进程归属为 `powershell.exe`，功能与直接运行 exe 无差别。
 
 ## 使用
 
-程序启动后常驻托盘，无主窗口。所有交互通过托盘图标完成。
+通过 `MouseBatteryTray.vbs`（或 `MouseBatteryTray.exe`）启动后常驻托盘，无主窗口。所有交互通过托盘图标完成。
 
 | 操作 | 行为 |
 |---|---|
