@@ -18,6 +18,10 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
+      - name: 配色对比度检查
+        shell: pwsh
+        run: python tools/check_contrast.py
+
       - name: 编译
         shell: pwsh
         run: ./build.ps1

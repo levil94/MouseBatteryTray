@@ -70,7 +70,7 @@ namespace MouseBatteryTray
             Card = Color.FromArgb(255, 255, 255),
             CardBorder = Color.FromArgb(220, 220, 220),
             Header = Color.FromArgb(28, 28, 28),
-            Input = Color.FromArgb(250, 250, 250),
+            Input = Color.FromArgb(242, 242, 242),
             InputBorder = Color.FromArgb(200, 200, 200),
             Text = Color.FromArgb(26, 26, 26),
             TextSecondary = Color.FromArgb(70, 70, 70),
