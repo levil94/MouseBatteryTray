@@ -21,7 +21,8 @@ namespace MouseBatteryTray
         public string IconMode = "digits";      // digits | battery | custom
         public string CustomIconPath = "";
         public bool SoundEnabled = true;
-        public string SoundFile = "";           // 空 = 使用系统警告音
+        public string SoundFile = "";
+        public string Appearance = "system";    // system | light | dark
 
         private static string SettingsPath
         {
@@ -72,6 +73,9 @@ namespace MouseBatteryTray
                         case "sound_file":
                             s.SoundFile = val;
                             break;
+                        case "appearance":
+                            if (val == "system" || val == "light" || val == "dark") s.Appearance = val;
+                            break;
                     }
                 }
             }
@@ -94,7 +98,8 @@ namespace MouseBatteryTray
                     "icon_mode=" + IconMode,
                     "custom_icon_path=" + CustomIconPath,
                     "sound_enabled=" + (SoundEnabled ? "1" : "0"),
-                    "sound_file=" + SoundFile
+                    "sound_file=" + SoundFile,
+                    "appearance=" + Appearance
                 };
                 File.WriteAllLines(SettingsPath, lines);
             }
@@ -114,7 +119,6 @@ namespace MouseBatteryTray
             return v;
         }
 
-        /// <summary>播放低电量提示音：优先自定义 wav，否则系统警告音。</summary>
         public void PlayAlertSound()
         {
             if (!SoundEnabled) return;
@@ -122,10 +126,7 @@ namespace MouseBatteryTray
             {
                 if (!string.IsNullOrEmpty(SoundFile) && File.Exists(SoundFile))
                 {
-                    using (var player = new SoundPlayer(SoundFile))
-                    {
-                        player.Play();
-                    }
+                    using (var player = new SoundPlayer(SoundFile)) player.Play();
                 }
                 else
                 {
@@ -139,12 +140,13 @@ namespace MouseBatteryTray
         }
     }
 
-    /// <summary>设置窗口（深色主题，卡片式布局）。</summary>
+    /// <summary>设置窗口：浅色 / 深色双主题，跟随系统可实时切换。</summary>
     internal sealed class SettingsForm : Form
     {
         private readonly NumericUpDown _interval;
         private readonly NumericUpDown _threshold;
         private readonly ComboBox _iconMode;
+        private readonly ComboBox _appearance;
         private readonly Label _iconPathLabel;
         private readonly Button _browseIcon;
         private readonly PictureBox _preview;
@@ -153,9 +155,15 @@ namespace MouseBatteryTray
         private readonly Button _browseSound;
         private readonly Button _testSound;
         private readonly CheckBox _autoStart;
+        private readonly Button _ok;
+        private readonly Button _cancel;
+        private readonly Label _title;
+        private readonly Label _subtitle;
         private readonly AppSettings _draft;
+        private ThemePalette _palette;
         private string _pendingIconPath;
         private string _pendingSoundPath;
+        private bool _suppressAppearanceEvent;
 
         public AppSettings Result { get { return _draft; } }
         public bool AutoStartChecked { get { return _autoStart.Checked; } }
@@ -169,111 +177,106 @@ namespace MouseBatteryTray
                 IconMode = current.IconMode,
                 CustomIconPath = current.CustomIconPath,
                 SoundEnabled = current.SoundEnabled,
-                SoundFile = current.SoundFile
+                SoundFile = current.SoundFile,
+                Appearance = current.Appearance
             };
             _pendingIconPath = current.CustomIconPath;
             _pendingSoundPath = current.SoundFile;
+            _palette = ThemeManager.Current;
 
             Text = "鼠标电量 — 设置";
             FormBorderStyle = FormBorderStyle.FixedSingle;
             StartPosition = FormStartPosition.CenterScreen;
             MaximizeBox = false;
             MinimizeBox = false;
-            ClientSize = new Size(468, 546);
-            BackColor = Theme.Background;
-            ForeColor = Theme.Text;
-            Font = Theme.BodyFont;
-            DoubleBuffered = true;
+            ClientSize = new Size(468, 592);
+            BackColor = _palette.Window;
+            Font = new Font("Segoe UI", 9.5f);
 
-            // ---------- 标题 ----------
-            var title = new Label
+            _title = new Label
             {
                 Text = "设置",
-                Font = Theme.TitleFont,
-                ForeColor = Theme.Text,
-                BackColor = Theme.Background,
+                Font = new Font("Segoe UI Semibold", 15f, FontStyle.Bold),
                 AutoSize = true,
-                Location = new Point(24, 16)
+                Location = new Point(24, 16),
+                Tag = "title"
             };
-            var subtitle = new Label
+            _subtitle = new Label
             {
                 Text = "MouseBatteryTray · 托盘电量监控",
-                Font = Theme.SmallFont,
-                ForeColor = Theme.SubText,
-                BackColor = Theme.Background,
+                Font = new Font("Segoe UI", 8.5f),
                 AutoSize = true,
-                Location = new Point(26, 46)
+                Location = new Point(26, 46),
+                Tag = "muted"
             };
 
-            // ---------- 卡片 1：刷新与阈值 ----------
-            var card1 = new CardPanel { Location = new Point(24, 78), Size = new Size(420, 120) };
-            var l1 = MakeLabel("刷新频率", new Point(16, 16), card1);
-            _interval = MakeNumeric(new Point(150, 13), AppSettings.MinInterval, AppSettings.MaxInterval, 5, _draft.IntervalSeconds, card1);
-            var u1 = MakeUnit("秒", new Point(248, 16), card1);
-            var h1 = MakeHint("10 – 3600", new Point(288, 16), card1);
+            // ---------- 卡片 1：外观与行为 ----------
+            var card1 = new CardPanel(_palette) { Location = new Point(24, 78), Size = new Size(420, 158) };
 
-            var l2 = MakeLabel("低电量阈值", new Point(16, 54), card1);
-            _threshold = MakeNumeric(new Point(150, 51), AppSettings.MinThreshold, AppSettings.MaxThreshold, 1, _draft.LowThreshold, card1);
-            var u2 = MakeUnit("%", new Point(248, 54), card1);
-            var h2 = MakeHint("5 – 90", new Point(288, 54), card1);
+            var header1 = SectionHeader("外观与刷新", new Point(16, 12), card1, _palette);
 
-            var l3 = MakeLabel("图标样式", new Point(16, 90), card1);
-            _iconMode = new ComboBox
-            {
-                Location = new Point(150, 87),
-                Width = 246,
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(24, 24, 24),
-                ForeColor = Theme.Text,
-                Font = Theme.BodyFont
-            };
+            var lApp = FieldLabel("外观", new Point(16, 48), card1, _palette);
+            _appearance = MakeCombo(new Point(150, 45), 246, card1, _palette);
+            _appearance.Items.AddRange(new object[] { "跟随系统", "亮色", "暗色" });
+            _suppressAppearanceEvent = true;
+            _appearance.SelectedIndex = _draft.Appearance == "light" ? 1 : (_draft.Appearance == "dark" ? 2 : 0);
+            _suppressAppearanceEvent = false;
+            _appearance.SelectedIndexChanged += AppearanceChanged;
+
+            var lInt = FieldLabel("刷新频率", new Point(16, 84), card1, _palette);
+            _interval = MakeNumeric(new Point(150, 81), AppSettings.MinInterval, AppSettings.MaxInterval, 5, _draft.IntervalSeconds, card1, _palette);
+            var u1 = MakeUnit("秒", new Point(248, 84), card1, _palette);
+            var h1 = MakeHint("10 – 3600", new Point(288, 84), card1, _palette);
+
+            var lTh = FieldLabel("低电量阈值", new Point(16, 120), card1, _palette);
+            _threshold = MakeNumeric(new Point(150, 117), AppSettings.MinThreshold, AppSettings.MaxThreshold, 1, _draft.LowThreshold, card1, _palette);
+            var u2 = MakeUnit("%", new Point(248, 120), card1, _palette);
+            var h2 = MakeHint("5 – 90", new Point(288, 120), card1, _palette);
+
+            // ---------- 卡片 2：图标 ----------
+            var card2 = new CardPanel(_palette) { Location = new Point(24, 244), Size = new Size(420, 108) };
+            var header2 = SectionHeader("托盘图标", new Point(16, 12), card2, _palette);
+
+            _iconMode = MakeCombo(new Point(16, 46), 200, card2, _palette);
             _iconMode.Items.AddRange(new object[] { "数字（默认）", "电池图形", "自定义图片" });
             _iconMode.SelectedIndex = _draft.IconMode == "battery" ? 1 : (_draft.IconMode == "custom" ? 2 : 0);
             _iconMode.SelectedIndexChanged += delegate { SyncIconControls(); };
-            card1.Controls.Add(_iconMode);
 
-            // ---------- 卡片 2：图标预览与自定义图片 ----------
-            var card2 = new CardPanel { Location = new Point(24, 206), Size = new Size(420, 96) };
             _preview = new PictureBox
             {
-                Location = new Point(16, 16),
-                Size = new Size(64, 64),
+                Location = new Point(240, 40),
+                Size = new Size(48, 48),
                 SizeMode = PictureBoxSizeMode.Zoom,
-                BackColor = Color.FromArgb(24, 24, 24)
+                BackColor = _palette.Input
             };
             card2.Controls.Add(_preview);
 
             _iconPathLabel = new Label
             {
-                Location = new Point(96, 22),
-                Size = new Size(220, 20),
-                Font = Theme.SmallFont,
-                ForeColor = Theme.SubText,
-                BackColor = Theme.Card,
+                Location = new Point(300, 46),
+                Size = new Size(100, 36),
+                Font = new Font("Segoe UI", 8.5f),
                 AutoEllipsis = true,
-                Text = "使用内置样式"
+                Tag = "muted"
             };
             card2.Controls.Add(_iconPathLabel);
 
-            _browseIcon = Theme.CreateSecondaryButton("选择图片…", 96);
-            _browseIcon.Location = new Point(96, 50);
+            _browseIcon = ThemeManager.CreateSecondaryButton("选择图片…", 96, _palette);
+            _browseIcon.Location = new Point(16, 76);
             _browseIcon.Click += BrowseIcon;
             card2.Controls.Add(_browseIcon);
 
-            var iconHint = MakeHint("支持 PNG / ICO / JPG / BMP，建议正方形", new Point(204, 56), card2);
-            iconHint.AutoSize = true;
-
             // ---------- 卡片 3：提示音 ----------
-            var card3 = new CardPanel { Location = new Point(24, 310), Size = new Size(420, 116) };
+            var card3 = new CardPanel(_palette) { Location = new Point(24, 360), Size = new Size(420, 116) };
+            var header3 = SectionHeader("低电量提示音", new Point(16, 12), card3, _palette);
+
             _soundEnabled = new CheckBox
             {
-                Text = "低电量时播放提示音",
-                Location = new Point(16, 14),
+                Text = "播放提示音",
+                Location = new Point(16, 44),
                 AutoSize = true,
-                ForeColor = Theme.Text,
-                BackColor = Theme.Card,
-                Font = Theme.BodyFont
+                Font = new Font("Segoe UI", 9.5f),
+                Tag = "check"
             };
             _soundEnabled.Checked = _draft.SoundEnabled;
             _soundEnabled.CheckedChanged += delegate { SyncSoundControls(); };
@@ -281,21 +284,20 @@ namespace MouseBatteryTray
 
             _soundPathLabel = new Label
             {
-                Location = new Point(16, 50),
-                Size = new Size(296, 20),
-                Font = Theme.SmallFont,
-                ForeColor = Theme.SubText,
-                BackColor = Theme.Card,
-                AutoEllipsis = true
+                Location = new Point(150, 47),
+                Size = new Size(250, 20),
+                Font = new Font("Segoe UI", 8.5f),
+                AutoEllipsis = true,
+                Tag = "muted"
             };
             card3.Controls.Add(_soundPathLabel);
 
-            _browseSound = Theme.CreateSecondaryButton("选择音频…", 96);
+            _browseSound = ThemeManager.CreateSecondaryButton("选择音频…", 96, _palette);
             _browseSound.Location = new Point(16, 78);
             _browseSound.Click += BrowseSound;
             card3.Controls.Add(_browseSound);
 
-            _testSound = Theme.CreateSecondaryButton("试听", 64);
+            _testSound = ThemeManager.CreateSecondaryButton("试听", 64, _palette);
             _testSound.Location = new Point(118, 78);
             _testSound.Click += delegate
             {
@@ -304,19 +306,25 @@ namespace MouseBatteryTray
             };
             card3.Controls.Add(_testSound);
 
-            var soundHint = MakeHint("留空则使用 Windows 警告音", new Point(190, 84), card3);
-            soundHint.AutoSize = true;
+            var soundHint = new Label
+            {
+                Text = "留空则使用 Windows 警告音",
+                Location = new Point(192, 84),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 8.5f),
+                Tag = "muted"
+            };
+            card3.Controls.Add(soundHint);
 
             // ---------- 卡片 4：启动 ----------
-            var card4 = new CardPanel { Location = new Point(24, 434), Size = new Size(420, 56) };
+            var card4 = new CardPanel(_palette) { Location = new Point(24, 484), Size = new Size(420, 56) };
             _autoStart = new CheckBox
             {
                 Text = "开机自动启动",
                 Location = new Point(16, 18),
                 AutoSize = true,
-                ForeColor = Theme.Text,
-                BackColor = Theme.Card,
-                Font = Theme.BodyFont
+                Font = new Font("Segoe UI", 9.5f),
+                Tag = "check"
             };
             _autoStart.Checked = autoStartEnabled;
             card4.Controls.Add(_autoStart);
@@ -324,80 +332,193 @@ namespace MouseBatteryTray
             var versionLabel = new Label
             {
                 Text = "v" + Program.AppVersion,
-                Location = new Point(320, 20),
+                Location = new Point(352, 20),
                 AutoSize = true,
-                Font = Theme.SmallFont,
-                ForeColor = Theme.SubText,
-                BackColor = Theme.Card
+                Font = new Font("Segoe UI", 8.5f),
+                Tag = "muted"
             };
             card4.Controls.Add(versionLabel);
 
             // ---------- 底部按钮 ----------
-            var cancel = Theme.CreateSecondaryButton("取消", 88);
-            cancel.Location = new Point(252, 504);
-            cancel.DialogResult = DialogResult.Cancel;
+            _cancel = ThemeManager.CreateSecondaryButton("取消", 88, _palette);
+            _cancel.Location = new Point(252, 550);
+            _cancel.DialogResult = DialogResult.Cancel;
 
-            var ok = Theme.CreatePrimaryButton("保存");
-            ok.Location = new Point(356, 502);
-            ok.DialogResult = DialogResult.OK;
-            ok.Click += delegate { ApplyToDraft(); };
+            _ok = ThemeManager.CreatePrimaryButton("保存", _palette);
+            _ok.Location = new Point(356, 548);
+            _ok.DialogResult = DialogResult.OK;
+            _ok.Click += delegate { ApplyToDraft(); };
 
-            Controls.AddRange(new Control[] { title, subtitle, card1, card2, card3, card4, cancel, ok });
-            AcceptButton = ok;
-            CancelButton = cancel;
+            Controls.AddRange(new Control[] { _title, _subtitle, card1, card2, card3, card4, _cancel, _ok });
 
-            Load += delegate { Theme.ApplyDarkTitleBar(this); };
+            AcceptButton = _ok;
+            CancelButton = _cancel;
+
+            Load += delegate { ThemeManager.ApplyTitleBar(this); };
+            ThemeManager.Changed += OnThemeChanged;
+
+            ApplyPalette(_palette);
             SyncIconControls();
             SyncSoundControls();
         }
 
-        private static Label MakeLabel(string text, Point location, Control parent)
+        private void OnThemeChanged(object sender, EventArgs e)
+        {
+            if (IsDisposed) return;
+            // 用户在弹窗里手动选了模式时不跟随系统
+            if (!_suppressAppearanceEvent && _appearance.SelectedIndex == 0)
+            {
+                ApplyPalette(ThemeManager.Current);
+            }
+        }
+
+        private void AppearanceChanged(object sender, EventArgs e)
+        {
+            if (_suppressAppearanceEvent) return;
+            string mode = _appearance.SelectedIndex == 1 ? "light" : (_appearance.SelectedIndex == 2 ? "dark" : "system");
+            ThemeManager.Apply(mode);
+            ApplyPalette(ThemeManager.Current);
+        }
+
+        // ---------- 主题应用 ----------
+
+        private void ApplyPalette(ThemePalette p)
+        {
+            _palette = p;
+            BackColor = p.Window;
+            ForeColor = p.Text;
+            ThemeManager.ApplyTitleBar(this);
+
+            foreach (Control control in Controls) ApplyToControl(control, p);
+        }
+
+        private static void ApplyToControl(Control control, ThemePalette p)
+        {
+            var card = control as CardPanel;
+            if (card != null) card.ApplyPalette(p);
+
+            var label = control as Label;
+            if (label != null)
+            {
+                string tag = label.Tag as string;
+                if (tag == "title") { label.ForeColor = p.Text; label.BackColor = p.Window; }
+                else if (tag == "muted") { label.ForeColor = p.TextMuted; label.BackColor = label.Parent is CardPanel ? p.Card : p.Window; }
+                else if (tag == "header") { label.ForeColor = p.Accent; label.BackColor = p.Card; }
+                else { label.ForeColor = p.TextSecondary; label.BackColor = p.Card; }
+            }
+
+            var input = control as NumericUpDown;
+            if (input != null)
+            {
+                input.BackColor = p.Input;
+                input.ForeColor = p.Text;
+                input.BorderStyle = BorderStyle.FixedSingle;
+            }
+
+            var combo = control as ComboBox;
+            if (combo != null)
+            {
+                combo.BackColor = p.Input;
+                combo.ForeColor = p.Text;
+                combo.FlatStyle = FlatStyle.Flat;
+            }
+
+            var check = control as CheckBox;
+            if (check != null)
+            {
+                check.ForeColor = p.TextSecondary;
+                check.BackColor = check.Parent is CardPanel ? p.Card : p.Window;
+            }
+
+            var button = control as Button;
+            if (button != null)
+            {
+                if (button == null) return;
+            }
+
+            foreach (Control child in control.Controls) ApplyToControl(child, p);
+        }
+
+        // ---------- 控件工厂 ----------
+
+        private static Label SectionHeader(string text, Point location, Control parent, ThemePalette p)
+        {
+            var label = new Label
+            {
+                Text = "▍ " + text,
+                Location = location,
+                AutoSize = true,
+                Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold),
+                ForeColor = p.Accent,
+                BackColor = p.Card,
+                Tag = "header"
+            };
+            parent.Controls.Add(label);
+            return label;
+        }
+
+        private static Label FieldLabel(string text, Point location, Control parent, ThemePalette p)
         {
             var label = new Label
             {
                 Text = text,
                 Location = location,
                 AutoSize = true,
-                ForeColor = Theme.Text,
-                BackColor = Theme.Card,
-                Font = Theme.BodyFont
+                Font = new Font("Segoe UI", 9.5f),
+                ForeColor = p.TextSecondary,
+                BackColor = p.Card
             };
             parent.Controls.Add(label);
             return label;
         }
 
-        private static Label MakeUnit(string text, Point location, Control parent)
+        private static Label MakeUnit(string text, Point location, Control parent, ThemePalette p)
         {
             var label = new Label
             {
                 Text = text,
                 Location = location,
                 AutoSize = true,
-                ForeColor = Theme.SubText,
-                BackColor = Theme.Card,
-                Font = Theme.SmallFont
+                Font = new Font("Segoe UI", 8.5f),
+                ForeColor = p.TextMuted,
+                BackColor = p.Card
             };
             parent.Controls.Add(label);
             return label;
         }
 
-        private static Label MakeHint(string text, Point location, Control parent)
+        private static Label MakeHint(string text, Point location, Control parent, ThemePalette p)
         {
             var label = new Label
             {
                 Text = text,
                 Location = location,
-                AutoSize = false,
-                Size = new Size(120, 20),
-                ForeColor = Color.FromArgb(110, 110, 110),
-                BackColor = Theme.Card,
-                Font = Theme.SmallFont
+                AutoSize = true,
+                Font = new Font("Segoe UI", 8.5f),
+                ForeColor = p.TextMuted,
+                BackColor = p.Card
             };
             parent.Controls.Add(label);
             return label;
         }
 
-        private static NumericUpDown MakeNumeric(Point location, int min, int max, int step, int value, Control parent)
+        private static ComboBox MakeCombo(Point location, int width, Control parent, ThemePalette p)
+        {
+            var combo = new ComboBox
+            {
+                Location = location,
+                Width = width,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = p.Input,
+                ForeColor = p.Text,
+                Font = new Font("Segoe UI", 9.5f)
+            };
+            parent.Controls.Add(combo);
+            return combo;
+        }
+
+        private static NumericUpDown MakeNumeric(Point location, int min, int max, int step, int value, Control parent, ThemePalette p)
         {
             var box = new NumericUpDown
             {
@@ -408,29 +529,31 @@ namespace MouseBatteryTray
                 Increment = step,
                 Value = value,
                 BorderStyle = BorderStyle.FixedSingle,
-                TextAlign = HorizontalAlignment.Center
+                TextAlign = HorizontalAlignment.Center,
+                BackColor = p.Input,
+                ForeColor = p.Text,
+                Font = new Font("Segoe UI", 9.5f)
             };
-            Theme.StyleInput(box);
             parent.Controls.Add(box);
             return box;
         }
+
+        // ---------- 交互 ----------
 
         private void SyncIconControls()
         {
             bool custom = _iconMode.SelectedIndex == 2;
             _browseIcon.Enabled = custom;
             _iconPathLabel.Text = custom
-                ? (string.IsNullOrEmpty(_pendingIconPath) ? "尚未选择图片" : Path.GetFileName(_pendingIconPath))
-                : "使用内置样式";
+                ? (string.IsNullOrEmpty(_pendingIconPath) ? "尚未选择" : Path.GetFileName(_pendingIconPath))
+                : "内置样式";
             UpdatePreview();
         }
 
         private void SyncSoundControls()
         {
             bool on = _soundEnabled.Checked;
-            _soundPathLabel.Text = string.IsNullOrEmpty(_pendingSoundPath)
-                ? "提示音：Windows 警告音"
-                : "提示音：" + Path.GetFileName(_pendingSoundPath);
+            _soundPathLabel.Text = string.IsNullOrEmpty(_pendingSoundPath) ? "Windows 警告音" : Path.GetFileName(_pendingSoundPath);
             _browseSound.Enabled = on;
             _testSound.Enabled = on;
         }
@@ -473,20 +596,21 @@ namespace MouseBatteryTray
                     CustomIconPath = _pendingIconPath
                 };
 
-                var bmp = new Bitmap(64, 64);
+                var bmp = new Bitmap(48, 48);
                 using (Graphics g = Graphics.FromImage(bmp))
                 {
                     g.SmoothingMode = SmoothingMode.AntiAlias;
-                    g.Clear(Color.FromArgb(24, 24, 24));
+                    g.Clear(_palette.Input);
                     Icon drawn = IconRenderer.Render(settings, 72);
                     if (drawn != null)
                     {
-                        g.DrawIcon(drawn, new Rectangle(14, 14, 36, 36));
+                        g.DrawIcon(drawn, new Rectangle(6, 6, 36, 36));
                         drawn.Dispose();
                     }
                 }
                 if (_preview.Image != null) _preview.Image.Dispose();
                 _preview.Image = bmp;
+                _preview.BackColor = _palette.Input;
             }
             catch { }
         }
@@ -499,6 +623,13 @@ namespace MouseBatteryTray
             _draft.CustomIconPath = _pendingIconPath;
             _draft.SoundEnabled = _soundEnabled.Checked;
             _draft.SoundFile = _pendingSoundPath;
+            _draft.Appearance = _appearance.SelectedIndex == 1 ? "light" : (_appearance.SelectedIndex == 2 ? "dark" : "system");
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            ThemeManager.Changed -= OnThemeChanged;
+            base.OnFormClosed(e);
         }
     }
 }

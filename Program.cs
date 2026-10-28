@@ -106,14 +106,15 @@ namespace MouseBatteryTray
         public TrayContext()
         {
             _settings = AppSettings.Load();
+            ThemeManager.Apply(_settings.Appearance);
 
             _icon = new NotifyIcon { Visible = true, Text = "鼠标电量：正在读取…" };
             _icon.Icon = IconRenderer.Render(_settings, null);
             _icon.MouseClick += OnIconClick;
 
             var menu = new ContextMenuStrip();
-            menu.Renderer = new DarkMenuRenderer();
-            menu.Font = Theme.BodyFont;
+            menu.Renderer = new DarkMenuRenderer(ThemeManager.Current);
+            menu.Font = new Font("Segoe UI", 9.5f);
             menu.ShowImageMargin = false;
             menu.Padding = new Padding(2, 6, 2, 6);
             menu.RenderMode = ToolStripRenderMode.Professional;
@@ -144,6 +145,18 @@ namespace MouseBatteryTray
             _timer.Interval = _settings.IntervalSeconds * 1000;
             _timer.Tick += delegate { Refresh(false); };
             _timer.Start();
+
+            // 跟随系统主题：轮询注册表变化（开销极小，避免子类化 WndProc）
+            var themeTimer = new System.Windows.Forms.Timer();
+            themeTimer.Interval = 2000;
+            themeTimer.Tick += delegate { ThemeManager.RefreshIfFollowing(); };
+            themeTimer.Start();
+
+            ThemeManager.Changed += delegate
+            {
+                menu.Renderer = new DarkMenuRenderer(ThemeManager.Current);
+                if (_settings != null) _settings.Appearance = ThemeManager.Mode;
+            };
 
             Refresh(true);
         }
@@ -186,6 +199,7 @@ namespace MouseBatteryTray
                 }
 
                 _timer.Interval = _settings.IntervalSeconds * 1000;
+                ThemeManager.Apply(_settings.Appearance);
                 Program.Log(string.Format("设置已更新：间隔={0}s 阈值={1}% 图标={2} 提示音={3}",
                     _settings.IntervalSeconds, _settings.LowThreshold, _settings.IconMode,
                     _settings.SoundEnabled ? (_settings.SoundFile.Length > 0 ? "自定义" : "系统") : "关闭"));
