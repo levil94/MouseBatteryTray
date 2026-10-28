@@ -26,13 +26,7 @@ namespace MouseBatteryTray
 
         private static string SettingsPath
         {
-            get
-            {
-                string dir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MouseBatteryTray");
-                Directory.CreateDirectory(dir);
-                return Path.Combine(dir, "settings.ini");
-            }
+            get { return Path.Combine(Program.DataDir, "settings.ini"); }
         }
 
         public static AppSettings Load()

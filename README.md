@@ -99,7 +99,7 @@ Windows 默认将新出现的托盘图标收纳至溢出区域（`^` 箭头内�
 
 ## 配置
 
-配置文件路径：`%LOCALAPPDATA%\MouseBatteryTray\settings.ini`
+配置文件路径：程序所在目录下的 `settings.ini`（便携模式，不写入 `%LOCALAPPDATA%`）。
 
 ```ini
 # MouseBatteryTray 配置
@@ -172,7 +172,7 @@ Logitech 接收器 / 鼠标   ←── HID++ 2.0 ──→   MouseBatteryTray
 
 ## 数据文件
 
-全部位于 `%LOCALAPPDATA%\MouseBatteryTray\`：
+全部位于**程序所在目录**（便携模式，不在系统其他位置留文件）：
 
 | 文件 | 内容 | 生命周期 |
 |---|---|---|

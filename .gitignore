@@ -11,3 +11,9 @@ hidapi.dll
 .vs/
 bin/
 obj/
+
+# 运行期数据（便携模式，留在程序目录但不入库）
+settings.ini
+history.csv
+log.txt
+.write_probe
