@@ -1,80 +1,144 @@
 # MouseBatteryTray
 
-在 Windows 任务栏托盘显示罗技无线鼠标电量的轻量小工具。
+**在 Windows 任务栏托盘显示罗技无线鼠标电量与续航趋势的轻量工具。**
 
-- 单个 exe，**不需要安装 .NET SDK / Visual Studio**（用系统自带 `csc.exe` 编译）
-- 直接与鼠标通信（Logitech HID++ 2.0），**不依赖 G HUB 运行**
-- 托盘图标显示电量百分比，颜色随电量变化
-- 常驻内存约 30 MB，无后台服务、无驱动
+[![build](https://github.com/levil94/MouseBatteryTray/actions/workflows/build.yml/badge.svg)](https://github.com/levil94/MouseBatteryTray/actions/workflows/build.yml)
+[![release](https://img.shields.io/github/v/release/levil94/MouseBatteryTray)](https://github.com/levil94/MouseBatteryTray/releases)
+[![license](https://img.shields.io/github/license/levil94/MouseBatteryTray)](LICENSE)
 
-## 功能
+---
 
-| 功能 | 说明 |
+## 概述
+
+MouseBatteryTray 通过 Logitech HID++ 2.0 协议直接读取无线鼠标电池电压，在系统托盘显示电量，并记录历史采样以推算续航。
+
+工具不依赖 G HUB 运行，不安装驱动，不注入游戏进程，常驻内存约 30 MB。
+
+- 单个可执行文件，构建不依赖 Visual Studio 或 .NET SDK
+- 支持三种托盘图标样式与自定义图片
+- 提供电量历史曲线与剩余时间估算
+- 支持自定义低电量提示音与阈值
+
+## 功能特性
+
+| 特性 | 说明 |
 |---|---|
-| 电量显示 | 托盘图标按电量变色（绿 >50%、黄 25–50%、橙 10–25%、红 ≤10%） |
-| 图标样式 | 数字 / 电池图形 / 自定义图片（png / ico / jpg / bmp） |
-| 设置窗口 | 右键菜单 → 设置…，在程序内调整刷新頻率、阈值、图标 |
-| 悬停详情 | 设备名、电量、电压、更新时间 |
-| 左键点击 | 立即刷新 |
-| 右键菜单 | 立即刷新 / 设置… / 开机自动启动 / 退出 |
-| 轮询 | 默认 60 秒，可调 10–3600 秒 |
-| 断连处理 | 读取失败时显示 `--`，并保留上次读数与时间 |
-| 低电量提醒 | 默认 ≤20%（可调 5–90%），跳过高阈值才提醒；**可选提示音**（默认系统警告音，可指定 .wav） |
-| 剩余时间估算 | 基于放电速率推算还能用多久，显示在菜单与悬停提示中 |
-| 历史曲线 | 右键 → 历史曲线…，可选 1 小时 / 6 小时 / 24 小时 / 7 天 |
-| 悬停波动 | 提示同时给出最近 1 小时的降幅与区间（如 `1h -4% (55-59%)`） |
+| 电量显示 | 托盘图标实时显示百分比，按电量分级着色 |
+| 图标样式 | 数字 / 电池图形 / 自定义图片（PNG、ICO、JPG、BMP） |
+| 剩余时间估算 | 基于放电速率推算可用时长 |
+| 历史曲线 | 1 小时 / 6 小时 / 24 小时 / 7 天四档区间 |
+| 趋势提示 | 悬停显示最近一小时降幅与波动区间 |
+| 低电量提醒 | 可调阈值，气泡提示 + 可选提示音 |
+| 断连处理 | 保留最后一次读数与时间戳，图标灰显 |
+| 开机自启 | 写入当前用户 Run 注册表项，可在设置中开关 |
+| 单实例保护 | 全局互斥量，避免重复启动 |
+
+## 系统要求
+
+| 项目 | 要求 |
+|---|---|
+| 操作系统 | Windows 10 / Windows 11（x64） |
+| 运行时 | .NET Framework 4.x（系统自带） |
+| 硬件 | 支持 HID++ 2.0 电量特性的罗技无线鼠标 |
+| 首次构建 | 需要网络（自动下载 hidapi） |
+
+**已验证设备：** Logitech G502 LIGHTSPEED（接收器与有线两种连接方式均测试通过）。
+
+其他支持 `0x1001 BATTERY_LEVEL_STATUS` 特性的罗技设备理论上可用，但未逐一验证。
+
+## 安装
+
+### 方式一：下载发行版
+
+从 [Releases](https://github.com/levil94/MouseBatteryTray/releases) 下载 `MouseBatteryTray-win-x64.zip`，解压后运行 `MouseBatteryTray.exe`。
+
+压缩包内包含：
+
+```
+MouseBatteryTray.exe    主程序
+hidapi.dll              HID 访问库
+README.md               说明文档
+```
+
+两个文件必须位于同一目录。
+
+### 方式二：从源码构建
+
+详见 [从源码构建](#从源码构建)。
+
+## 使用
+
+程序启动后常驻托盘，无主窗口。所有交互通过托盘图标完成。
+
+| 操作 | 行为 |
+|---|---|
+| 悬停 | 显示电量、电压、最近一小时波动、预计剩余时间 |
+| 左键单击 | 立即刷新 |
+| 右键 | 打开菜单：当前状态 / 立即刷新 / 历史曲线 / 设置 / 退出 |
+
+### 首次运行提示
+
+Windows 默认将新出现的托盘图标收纳至溢出区域（`^` 箭头内）。两种处理方式：
+
+1. 展开 `^`，将图标拖拽至任务栏可见区域
+2. 打开「设置 → 个性化 → 任务栏 → 其他系统托盘图标」，将 `MouseBatteryTray` 设为「开」
 
 ### 设置项
 
-右击托盘图标 → **设置…**：
+右键菜单 → **设置…**
 
-| 设置 | 范围 | 默认 |
+| 设置 | 范围 | 默认值 |
 |---|---|---|
-| 刷新頻率 | 10 – 3600 秒 | 60 |
-| 低电量阈值 | 5 – 90 % | 20 |
+| 刷新频率 | 10 – 3600 秒 | 60 秒 |
+| 低电量阈值 | 5 – 90 % | 20 % |
 | 图标样式 | 数字 / 电池图形 / 自定义图片 | 数字 |
-| 提示音 | 开 / 关；可选自定义 .wav | 开（系统警告音） |
+| 提示音 | 开 / 关，可选自定义 WAV | 开（系统警告音） |
 | 开机自动启动 | 开 / 关 | 关 |
 
-配置保存于 `%LOCALAPPDATA%\MouseBatteryTray\settings.ini`，修改后立即生效，无需重启。
+设置保存后立即生效，无需重启程序。
 
-## 数据文件
+## 配置
 
-| 文件 | 内容 |
-|---|---|
-| `settings.ini` | 配置（刷新频率、阈值、图标、提示音） |
-| `history.csv` | 采样历史（时间、百分比、毫伏），保留 30 天 |
-| `log.txt` | 运行日志 |
+配置文件路径：`%LOCALAPPDATA%\MouseBatteryTray\settings.ini`
 
-均在 `%LOCALAPPDATA%\MouseBatteryTray\` 下。
-
-## 剩余时间估算原理
-
-用最近 6 小时（不足则 24 小时）的采样算放电速率（%/小时），再按当前电量外推：
-
-```
-剩余小时 = 当前电量 / 放电速率
+```ini
+# MouseBatteryTray 配置
+interval_seconds=60
+low_threshold=20
+icon_mode=digits
+custom_icon_path=
+sound_enabled=1
+sound_file=
 ```
 
-数据不足（跨度 < 12 分钟）或没有明显掉电时，不显示估算值。
+| 键 | 取值 | 说明 |
+|---|---|---|
+| `interval_seconds` | 10 – 3600 | 轮询间隔（秒） |
+| `low_threshold` | 5 – 90 | 低电量提醒阈值（%） |
+| `icon_mode` | `digits` / `battery` / `custom` | 图标样式 |
+| `custom_icon_path` | 路径 | `icon_mode=custom` 时使用的图片 |
+| `sound_enabled` | `1` / `0` | 是否播放提示音 |
+| `sound_file` | 路径 | 留空则使用系统警告音 |
+
+手动编辑后需重启程序或重新保存设置以生效。
 
 ## 工作原理
 
 ```
-Logitech 接收器 / 鼠标  ←HID++ 2.0→  本程序
+Logitech 接收器 / 鼠标   ←── HID++ 2.0 ──→   MouseBatteryTray
 ```
 
-1. 通过 `hidapi` 枚举 VID `0x046D` 的 HID 设备，只取 `usage_page=0xFF00, usage=0x0002` 的长报告集合
-2. 向设备索引依次尝试 `0xFF, 0x01…0x06`（插线走 `0xFF`，无线走接收器槽位）
-3. 用 `FEATURE_SET(0x0001)` 枚举特性表，找到 `0x1001`（BATTERY_LEVEL_STATUS）
-4. 读该特性，前两个字节即**电池电压（mV，大端）**
-5. 用分段线性曲线把电压换算成百分比
+1. 通过 `hidapi` 枚举厂商 ID 为 `0x046D` 的 HID 设备，筛选 `usage_page = 0xFF00`、`usage = 0x0002` 的长报告集合
+2. 依次尝试设备索引 `0xFF`（有线直连）与 `0x01–0x06`（接收器槽位），通过 `FEATURE_SET (0x0001)` 枚举特性表
+3. 定位 `0x1001 BATTERY_LEVEL_STATUS` 特性，读取返回的两个字节
+4. 这两个字节为**电池电压**（mV，大端序），而非百分比
+5. 按分段线性曲线换算为百分比
 
-> 注意：本项目读的是 `0x1001` 返回的**电压**，而不是百分比。罗技 G HUB 的百分比同样是按电压曲线算出来的，因此两者会有 1–2% 的差异，属正常。
+> 罗技 G HUB 显示的百分比同样由电压换算得出，因此两者可能存在 1–2% 的差异，属正常现象。
 
-## 电量换算
+### 电压–电量映射
 
-`Hidpp.cs` 中的 `VoltageAnchors` / `PercentAnchors` 是校准点，实测数据来自 G502 LIGHTSPEED：
+映射锚点定义于 `IconRenderer` 与 `Hidpp.cs` 的 `VoltageAnchors` / `PercentAnchors`：
 
 | 电压 (mV) | 百分比 |
 |---|---|
@@ -82,47 +146,123 @@ Logitech 接收器 / 鼠标  ←HID++ 2.0→  本程序
 | 4150 | 100 |
 | 4050 | 88 |
 | 3950 | 74 |
-| 3852 | 59 ← 实测校准点 |
+| 3852 | 59 |
 | 3800 | 50 |
 | 3700 | 32 |
 | 3600 | 16 |
 | 3500 | 5 |
 | 3400 | 0 |
 
-换设备或发现偏差时，按「原始电压 vs G HUB 显示」补两个点即可修正。
+其中 `3852 → 59%` 为实测校准点。更换设备或发现系统性偏差时，补充两至三个「原始电压 / G HUB 显示」采样点即可修正曲线。
 
-## 构建
+### 剩余时间算法
 
-需要：
+取最近 6 小时（样本不足则回退至 24 小时）的采样，计算放电速率：
 
-- Windows 10/11
-- .NET Framework 4.x（系统自带）
-- 网络（首次构建自动下载 `hidapi.dll`）
+```
+放电速率 = 区间内掉电百分比 / 区间小时数
+剩余时间 = 当前电量 / 放电速率
+```
+
+以下情况不显示估算值：
+
+- 采样跨度不足 12 分钟
+- 区间内无明显掉电
+- 推算结果超过 200 小时（视为异常数据）
+
+## 数据文件
+
+全部位于 `%LOCALAPPDATA%\MouseBatteryTray\`：
+
+| 文件 | 内容 | 生命周期 |
+|---|---|---|
+| `settings.ini` | 配置项 | 持久保存 |
+| `history.csv` | 采样记录（时间、百分比、毫伏） | 保留 30 天，超期自动裁剪 |
+| `log.txt` | 运行日志 | 追加写入 |
+
+历史采样节流规则：同一电量每 2 分钟最多记录一次；任意两次采样间隔不小于 20 秒。
+
+## 从源码构建
+
+### 依赖
+
+- Windows 10 / 11
+- .NET Framework 4.x（系统自带，包含 `csc.exe`）
+- 网络连接（首次构建时下载 `hidapi.dll`）
+
+### 构建步骤
 
 ```powershell
-git clone https://github.com/<your-name>/MouseBatteryTray.git
+git clone https://github.com/levil94/MouseBatteryTray.git
 cd MouseBatteryTray
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-产物：`MouseBatteryTray.exe`（约 15 KB）+ `hidapi.dll`（约 163 KB）。
+构建脚本会自动完成：
 
-## 使用
+1. 检测并下载官方 hidapi 预编译库（缺失时）
+2. 调用系统自带 `csc.exe` 编译全部 `.cs` 源文件
+3. 输出 `MouseBatteryTray.exe`
 
-1. 双击 `MouseBatteryTray.exe`
-2. 首次运行后图标可能被收进托盘的 `^` 溢出区——点开 `^` 把图标拖到可见区域，或在
-   任务栏设置 →「选择哪些图标显示在任务栏上」里打开它
-3. 右键菜单可勾选「开机自动启动」（写入 `HKCU\...\CurrentVersion\Run`）
+产物约 35 KB，需与 `hidapi.dll`（约 163 KB）同目录运行。
 
-日志：`%LOCALAPPDATA%\MouseBatteryTray\log.txt`
+### 持续集成
+
+`.github/workflows/build.yml` 定义了完整流水线：
+
+| 触发条件 | 行为 |
+|---|---|
+| 推送至 `master` | 编译、打包、上传构建产物 |
+| 推送 `v*` 标签 | 同上，并自动创建 GitHub Release |
+| Pull Request | 编译验证 |
+| 手动触发 | 可随时执行 |
+
+## 项目结构
+
+```
+MouseBatteryTray/
+├─ .github/workflows/build.yml   CI 流水线
+├─ build.ps1                     构建脚本
+├─ Program.cs                    入口、托盘生命周期、菜单
+├─ Hidpp.cs                      HID++ 2.0 协议与设备通信
+├─ History.cs                    采样存储、趋势统计、续航估算
+├─ IconRenderer.cs               图标绘制（三种样式）
+├─ ChartForm.cs                  历史曲线窗口
+├─ Settings.cs                   配置读写与设置窗口
+├─ README.md
+└─ LICENSE
+```
 
 ## 已知限制
 
-- 仅 Windows
-- 只在 G502 LIGHTSPEED 上验证过；其他支持 HID++ 2.0 电量特性的罗技设备理论上可用，但未逐一测试
-- 鼠标休眠或关机时读不到数据，界面会显示上次值
-- 16 px 托盘图标空间有限，数字使用等宽粗体；高 DPI 下会自动用更大的位图
+- 仅支持 Windows，未提供跨平台版本
+- 仅在一款设备上完成完整验证，其他型号需自行测试
+- 鼠标休眠或关闭时无法读取，界面显示最后已知数值
+- 托盘图标受系统尺寸限制（100% 缩放下为 16×16 像素），数字显示空间有限
+- 历史曲线需运行一段时间后才有数据
 
-## 许可
+## 常见问题
 
-MIT
+**托盘里找不到图标**
+
+Windows 默认收纳新图标。展开 `^` 拖出，或在任务栏设置中单独开启。
+
+**显示 `--` 或提示未连接**
+
+鼠标处于休眠、关机或超出接收范围状态。移动鼠标唤醒后会在下个轮询周期恢复。
+
+**百分比与 G HUB 不一致**
+
+两者使用各自的电压曲线，1–2% 的差异属正常。如需精确对齐，可按[电压–电量映射](#电压电量映射)自行校准。
+
+**剩余时间不显示**
+
+需要至少 12 分钟的采样且电量确有下降。充电状态下不会显示。
+
+**能否支持其他品牌鼠标**
+
+HID++ 2.0 为罗技专有协议。其他品牌需要各自实现，当前版本不支持。
+
+## 许可证
+
+[MIT](LICENSE)
