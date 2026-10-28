@@ -44,14 +44,28 @@ namespace MouseBatteryTray
             }
         }
 
+        /// <summary>数据目录：优先使用程序所在目录（便携模式），不可写时回退到 LOCALAPPDATA。</summary>
         internal static string DataDir
         {
             get
             {
-                string dir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName);
-                Directory.CreateDirectory(dir);
-                return dir;
+                string dir = Path.GetDirectoryName(ExecutablePath);
+                if (string.IsNullOrEmpty(dir)) dir = Directory.GetCurrentDirectory();
+
+                try
+                {
+                    string probe = Path.Combine(dir, ".write_probe");
+                    File.WriteAllText(probe, "ok");
+                    File.Delete(probe);
+                    return dir;
+                }
+                catch
+                {
+                    string fallback = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName);
+                    Directory.CreateDirectory(fallback);
+                    return fallback;
+                }
             }
         }
 
