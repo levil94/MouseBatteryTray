@@ -427,7 +427,24 @@ namespace MouseBatteryTray
             var button = control as Button;
             if (button != null)
             {
-                if (button == null) return;
+                string kind = button.Tag as string;
+                if (kind == "primary")
+                {
+                    button.BackColor = p.Accent;
+                    button.ForeColor = p.AccentText;
+                    button.FlatAppearance.BorderSize = 0;
+                    button.FlatAppearance.MouseOverBackColor = p.AccentHover;
+                    button.FlatAppearance.MouseDownBackColor = p.AccentHover;
+                }
+                else
+                {
+                    button.BackColor = p.Card;
+                    button.ForeColor = p.TextSecondary;
+                    button.FlatAppearance.BorderSize = 1;
+                    button.FlatAppearance.BorderColor = p.InputBorder;
+                    button.FlatAppearance.MouseOverBackColor = p.Hover;
+                    button.FlatAppearance.MouseDownBackColor = p.Hover;
+                }
             }
 
             foreach (Control child in control.Controls) ApplyToControl(child, p);

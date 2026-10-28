@@ -150,18 +150,41 @@ namespace MouseBatteryTray
             if (Changed != null) Changed(null, EventArgs.Empty);
         }
 
-        // ---------- 深色标题栏 ----------
+        // ---------- 深色标题栏 / 云母效果 ----------
 
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+
+        private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+        private const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
+        private const uint SWP_FLAGS = 0x0020 | 0x0002 | 0x0001 | 0x0004;   // FRAMECHANGED|NOMOVE|NOSIZE|NOZORDER
+
+        /// <summary>云母效果需要 Windows 11 22H2（build 22621）以上。</summary>
+        public static bool MicaSupported
+        {
+            get { return Environment.OSVersion.Version.Build >= 22621; }
+        }
 
         public static void ApplyTitleBar(Form form)
         {
             try
             {
                 int dark = Current.IsDark ? 1 : 0;
-                if (DwmSetWindowAttribute(form.Handle, 20, ref dark, sizeof(int)) != 0)
+                if (DwmSetWindowAttribute(form.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int)) != 0)
                     DwmSetWindowAttribute(form.Handle, 19, ref dark, sizeof(int));
+
+                if (MicaSupported)
+                {
+                    // 2 = Mica（桌面壁纸采样），4 = Tabbed；暗色下用 Mica 更稳
+                    int backdrop = Current.IsDark ? 2 : 2;
+                    DwmSetWindowAttribute(form.Handle, DWMWA_SYSTEMBACKDROP_TYPE, ref backdrop, sizeof(int));
+                }
+
+                // 强制重绘标题栏，否则切换主题后颜色不会刷新
+                SetWindowPos(form.Handle, IntPtr.Zero, 0, 0, 0, 0, SWP_FLAGS);
             }
             catch { }
         }
@@ -184,6 +207,7 @@ namespace MouseBatteryTray
             btn.FlatAppearance.BorderSize = 0;
             btn.FlatAppearance.MouseOverBackColor = p.AccentHover;
             btn.FlatAppearance.MouseDownBackColor = p.AccentHover;
+            btn.Tag = "primary";
             return btn;
         }
 
@@ -204,6 +228,7 @@ namespace MouseBatteryTray
             btn.FlatAppearance.BorderSize = 1;
             btn.FlatAppearance.MouseOverBackColor = p.Hover;
             btn.FlatAppearance.MouseDownBackColor = p.Hover;
+            btn.Tag = "secondary";
             return btn;
         }
     }
