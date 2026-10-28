@@ -16,6 +16,13 @@ import os
 import re
 import sys
 
+# CI 环境（Windows runner）默认 cp1252，输出中文会抛 UnicodeEncodeError
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 THEME_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Theme.cs")
 
 PAIRS = [
