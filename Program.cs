@@ -89,6 +89,7 @@ namespace MouseBatteryTray
         private LogitechBattery.Reading _last;
         private DateTime _lastUpdated = DateTime.MinValue;
         private bool _warned;
+        private ChartForm _chart;
 
         public TrayContext()
         {
@@ -106,6 +107,10 @@ namespace MouseBatteryTray
             var refreshItem = new ToolStripMenuItem("立即刷新");
             refreshItem.Click += delegate { Refresh(true); };
             menu.Items.Add(refreshItem);
+
+            var chartItem = new ToolStripMenuItem("历史曲线…");
+            chartItem.Click += delegate { ShowChart(); };
+            menu.Items.Add(chartItem);
 
             var settingsItem = new ToolStripMenuItem("设置…");
             settingsItem.Click += delegate { OpenSettings(); };
@@ -131,15 +136,26 @@ namespace MouseBatteryTray
             if (e.Button == MouseButtons.Left) Refresh(true);
         }
 
+        private void ShowChart()
+        {
+            if (_chart != null && !_chart.IsDisposed)
+            {
+                _chart.Activate();
+                return;
+            }
+            _chart = new ChartForm();
+            _chart.FormClosed += delegate { _chart = null; };
+            _chart.Show();
+        }
+
         private void OpenSettings()
         {
             using (var form = new SettingsForm(_settings, Program.IsAutoStartEnabled()))
             {
                 if (form.ShowDialog() != DialogResult.OK) return;
 
-                AppSettings updated = form.Result;
                 bool autoStartChanged = form.AutoStartChecked != Program.IsAutoStartEnabled();
-                _settings = updated;
+                _settings = form.Result;
                 _settings.Save();
 
                 if (autoStartChanged)
@@ -149,8 +165,9 @@ namespace MouseBatteryTray
                 }
 
                 _timer.Interval = _settings.IntervalSeconds * 1000;
-                Program.Log(string.Format("设置已更新：间隔={0}s 阈值={1}% 图标={2}",
-                    _settings.IntervalSeconds, _settings.LowThreshold, _settings.IconMode));
+                Program.Log(string.Format("设置已更新：间隔={0}s 阈值={1}% 图标={2} 提示音={3}",
+                    _settings.IntervalSeconds, _settings.LowThreshold, _settings.IconMode,
+                    _settings.SoundEnabled ? (_settings.SoundFile.Length > 0 ? "自定义" : "系统") : "关闭"));
 
                 _warned = false;
                 Refresh(true);
@@ -166,19 +183,26 @@ namespace MouseBatteryTray
                 {
                     _last = reading;
                     _lastUpdated = DateTime.Now;
+                    HistoryStore.Add(reading.Percent, reading.Millivolts);
+
                     Program.Log(string.Format("OK {0} idx=0x{1:X2} {2}mV -> {3}%",
                         reading.DeviceName, reading.DeviceIndex, reading.Millivolts, reading.Percent));
 
-                    SetIcon(reading.Percent, string.Format("{0} {1}% · {2:0.00}V · {3:HH:mm}",
-                        ShortName(reading.DeviceName), reading.Percent, reading.Millivolts / 1000.0, _lastUpdated));
-                    _infoItem.Text = string.Format("{0}：{1}%（{2:0.00}V）",
-                        ShortName(reading.DeviceName), reading.Percent, reading.Millivolts / 1000.0);
+                    string trend = HistoryStore.TrendSummary();
+                    double? remaining = HistoryStore.RemainingHours(reading.Percent);
+                    string remainText = remaining.HasValue ? HistoryStore.FormatDuration(remaining.Value) : "";
+
+                    SetIcon(reading.Percent, BuildTooltip(reading, trend, remainText));
+                    _infoItem.Text = BuildMenuInfo(reading, trend, remainText);
 
                     if (reading.Percent <= _settings.LowThreshold && !_warned)
                     {
                         _warned = true;
+                        _settings.PlayAlertSound();
                         _icon.ShowBalloonTip(5000, "鼠标电量偏低",
-                            string.Format("剩余 {0}%，已低于设定的 {1}%。", reading.Percent, _settings.LowThreshold),
+                            string.Format("剩余 {0}%，已低于设定的 {1}%。{2}",
+                                reading.Percent, _settings.LowThreshold,
+                                remainText.Length > 0 ? "预计可用 " + remainText + "。" : ""),
                             ToolTipIcon.Warning);
                     }
                     if (reading.Percent > _settings.LowThreshold + 5) _warned = false;
@@ -202,6 +226,23 @@ namespace MouseBatteryTray
             {
                 Program.Log("异常：" + ex);
             }
+        }
+
+        private static string BuildTooltip(LogitechBattery.Reading r, string trend, string remaining)
+        {
+            string text = string.Format("{0}% · {1:0.00}V", r.Percent, r.Millivolts / 1000.0);
+            if (trend.Length > 0) text += " · " + trend;
+            if (remaining.Length > 0) text += " · 剩 " + remaining;
+            return text.Length > 63 ? text.Substring(0, 63) : text;
+        }
+
+        private static string BuildMenuInfo(LogitechBattery.Reading r, string trend, string remaining)
+        {
+            string name = ShortName(r.DeviceName);
+            string line = string.Format("{0}：{1}%（{2:0.00}V，{3}）", name, r.Percent, r.Millivolts / 1000.0, r.DeviceIndex == 0xFF ? "有线" : "无线");
+            if (trend.Length > 0) line += " · " + trend;
+            if (remaining.Length > 0) line += " · 预计剩余 " + remaining;
+            return line;
         }
 
         private static string ShortName(string name)
