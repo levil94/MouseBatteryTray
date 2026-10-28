@@ -48,9 +48,29 @@ MouseBatteryTray 通过 Logitech HID++ 2.0 协议直接读取无线鼠标电池�
 
 ## 安装
 
-### 方式一：下载发行版
+提供两种发行形式：**安装包**与**便携版**。两者功能完全一致，区别只在部署方式。
 
-从 [Releases](https://github.com/levil94/MouseBatteryTray/releases) 下载 `MouseBatteryTray-win-x64.zip`，解压后**双击 `MouseBatteryTray.vbs`** 启动。
+### 方式一：安装包（推荐）
+
+从 [Releases](https://github.com/levil94/MouseBatteryTray/releases) 下载 `MouseBatteryTray-<版本>-setup.exe`，双击运行，按向导完成安装。
+
+| 项目 | 说明 |
+|---|---|
+| 安装位置 | 默认 `%LOCALAPPDATA%\Programs\MouseBatteryTray`，**通道中可自行选择** |
+| 权限 | 按用户安装，**不需要管理员** |
+| 开始菜单 | 快捷方式指向宿主启动器（兼容 Smart App Control） |
+| 桌面快捷方式 | 可选，默认不创建 |
+| 开机自启 | 可选，写入当前用户 `Run` 项，指向 vbs |
+| 卸载 | 开始菜单中的「卸载 MouseBatteryTray」，同时清理源码目录 |
+| 附带内容 | 程序文件 + `src\` 源码（供启动器即时编译）+ 文档 |
+
+安装向导为中文界面。
+
+> ⚠️ 安装包与程序本体均为未签名文件。开启 **Smart App Control 强制模式**的机器无法运行安装包，请改用方式二。
+
+### 方式二：便携版
+
+下载 `MouseBatteryTray-win-x64.zip`，解压到任意目录，**双击 `MouseBatteryTray.vbs`** 启动。
 
 压缩包内包含：
 
@@ -69,7 +89,9 @@ README.md                       说明文档
 | **`MouseBatteryTray.vbs`** | 通用，包括开启 Smart App Control 的机器 |
 | `MouseBatteryTray.exe` | 系统允许运行未签名程序时使用，启动略快 |
 
-### 方式二：从源码构建
+运行期数据（配置、历史、日志）保存在程序所在目录，不写入系统其他位置。
+
+### 方式三：从源码构建
 
 详见 [从源码构建](#从源码构建)。
 
