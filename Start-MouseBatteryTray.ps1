@@ -15,15 +15,15 @@ function Write-LauncherLog([string]$text) {
     } catch { }
 }
 
-$sources = @(
-    (Join-Path $root "Hidpp.cs"),
-    (Join-Path $root "History.cs"),
-    (Join-Path $root "IconRenderer.cs"),
-    (Join-Path $root "Theme.cs"),
-    (Join-Path $root "ChartForm.cs"),
-    (Join-Path $root "Settings.cs"),
-    (Join-Path $root "Program.cs")
-)
+$sources = Get-ChildItem -Path $root -Filter *.cs -File |
+    Where-Object { $_.Name -notmatch '^(AssemblyInfo|obj)' } |
+    Sort-Object Name |
+    ForEach-Object { $_.FullName }
+
+if ($sources.Count -eq 0) {
+    Write-LauncherLog "no .cs sources found in $root"
+    exit 1
+}
 
 foreach ($f in $sources) {
     if (-not (Test-Path $f)) {
@@ -31,6 +31,7 @@ foreach ($f in $sources) {
         exit 1
     }
 }
+Write-LauncherLog ("sources: " + ($sources.Count) + " files")
 
 # 让程序把数据写在本目录，并能在本目录找到 hidapi.dll
 $env:MOUSEBATTERYTRAY_DATA = $root
